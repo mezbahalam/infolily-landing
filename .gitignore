@@ -1,0 +1,24 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+*.swp
+*.swo
+*~
+
+# Node (if using build tools in future)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# IDE
+.vscode/
+.idea/
+*.sublime-workspace
+
+# Environment
+.env
+.env.local
+
+# Cloudflare
+wrangler.toml
