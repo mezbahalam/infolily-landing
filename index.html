@@ -5135,5 +5135,123 @@
         });
     })();
 </script>
+
+<script>
+(function() {
+  'use strict';
+
+  var API_URL = 'https://api-cn.infolily.com/api/v1/sync';
+  var AID_COOKIE = 'aid';
+  var AID_STORAGE = 'aid';
+  var SENT_BASE_KEY = 'aid_sent_base';
+  var SENT_PARAMS_KEY = 'aid_sent_with_params';
+  var MAX_AGE_DAYS = 90;
+
+  var ATTRIBUTION_KEYS = [
+    'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term',
+    'gclid', 'gbraid', 'wbraid', 'rdt_cid'
+  ];
+
+  function generateUUID() {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      var r = crypto.getRandomValues(new Uint8Array(1))[0] % 16;
+      var v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+
+  function getCookie(name) {
+    var match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+    return match ? match[2] : null;
+  }
+
+  function setCookie(name, value, days) {
+    var expires = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toUTCString();
+    document.cookie = name + '=' + value + '; Domain=.infolily.com; Path=/; Secure; SameSite=Lax; Expires=' + expires;
+  }
+
+  function getAid() {
+    var aid = getCookie(AID_COOKIE) || localStorage.getItem(AID_STORAGE);
+    if (!aid) {
+      aid = generateUUID();
+    }
+    setCookie(AID_COOKIE, aid, MAX_AGE_DAYS);
+    try { localStorage.setItem(AID_STORAGE, aid); } catch(e) {}
+    return aid;
+  }
+
+  function getParams() {
+    var params = new URLSearchParams(window.location.search);
+    var result = {};
+    ATTRIBUTION_KEYS.forEach(function(key) {
+      var val = params.get(key);
+      if (val) result[key] = val;
+    });
+    return result;
+  }
+
+  function hasAttribution(params) {
+    return ATTRIBUTION_KEYS.some(function(key) { return params[key]; });
+  }
+
+  function getSanitizedLandingUrl() {
+    var url = new URL(window.location.href);
+    var clean = new URL(url.origin + url.pathname);
+    ATTRIBUTION_KEYS.forEach(function(key) {
+      var val = url.searchParams.get(key);
+      if (val) clean.searchParams.set(key, val);
+    });
+    return clean.toString();
+  }
+
+  function getReferrerOrigin() {
+    if (!document.referrer) return null;
+    try { return new URL(document.referrer).origin; } catch(e) { return null; }
+  }
+
+  function sendAttribution() {
+    var params = getParams();
+    var hasAttr = hasAttribution(params);
+    var sentBase = sessionStorage.getItem(SENT_BASE_KEY);
+    var sentParams = sessionStorage.getItem(SENT_PARAMS_KEY);
+
+    if (hasAttr) {
+      if (sentParams) return;
+    } else {
+      if (sentBase) return;
+    }
+
+    var aid = getAid();
+    var payload = {
+      aid: aid,
+      landing_url: getSanitizedLandingUrl(),
+      landing_path: window.location.pathname,
+      referrer_origin: getReferrerOrigin()
+    };
+
+    ATTRIBUTION_KEYS.forEach(function(key) {
+      payload[key] = params[key] || null;
+    });
+
+    fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(function() {
+      sessionStorage.setItem(SENT_BASE_KEY, '1');
+      if (hasAttr) sessionStorage.setItem(SENT_PARAMS_KEY, '1');
+    }).catch(function() {});
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', sendAttribution);
+  } else {
+    sendAttribution();
+  }
+})();
+</script>
 </body>
 </html>
