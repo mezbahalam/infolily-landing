@@ -3205,8 +3205,8 @@
     </nav>
     <a href="https://chromewebstore.google.com/detail/aapchhfjoohmohpdcadghjacklcdfdml?utm_source=landing&utm_medium=mobile_menu&utm_campaign=install"
        class="mobile-cta-btn"
-       target="_blank"
-       onclick="dataLayer.push({'event': 'install_click', 'source': 'mobile_menu'});">
+       data-section="mobile_menu"
+       target="_blank">
         Install Extension
     </a>
 </div>
@@ -5018,8 +5018,10 @@
                 if (this.getAttribute('data-ga') === 'premium-cta') return;
                 const u = new URL(this.href);
                 const pageUTM = getUTMs();
+                const section = this.getAttribute('data-section') || 'unknown';
                 pushEvent('install_click', {
-                    section: this.getAttribute('data-section') || 'unknown',
+                    section,
+                    source: section,
                     utm_source:   u.searchParams.get('utm_source')   || pageUTM.utm_source,
                     utm_medium:   u.searchParams.get('utm_medium')   || pageUTM.utm_medium,
                     utm_campaign: u.searchParams.get('utm_campaign') || pageUTM.utm_campaign,
