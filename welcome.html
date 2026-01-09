@@ -8,6 +8,22 @@
     <link rel="icon" type="image/svg+xml" href="/chat-navigator/favicon.svg">
     <link rel="icon" type="image/png" sizes="32x32" href="/chat-navigator/favicon-32.png">
     <script>
+        // Capture install_id before GTM/GA loads and strip it from the URL.
+        (function(){
+            try{
+                var params=new URLSearchParams(window.location.search);
+                var raw=params.get('install_id');
+                if(raw){
+                    window.__install_id=raw;
+                    params.delete('install_id');
+                    var next=params.toString();
+                    var clean=window.location.pathname+(next?'?'+next:'')+window.location.hash;
+                    history.replaceState({},'',clean);
+                }
+            }catch(e){}
+        })();
+    </script>
+    <script>
         window.dataLayer = window.dataLayer || [];
         window.dataLayer.push({ page_type: 'welcome', site: 'infolily', locale: 'en' });
     </script>
@@ -110,6 +126,11 @@
         .secondary{display:inline-block;margin-top:24px;color:rgba(255,255,255,0.5);text-decoration:none;font-size:14px;transition:color .2s}
         .secondary:hover{color:rgba(255,255,255,0.8)}
 
+        /* Status */
+        .status-wrap{margin-top:16px;font-size:13px;color:rgba(255,255,255,0.4);min-height:20px}
+        #status:not(:empty){color:rgba(255,255,255,0.6)}
+        #note{margin-top:4px;font-size:12px}
+
         /* Footer */
         .footer{margin-top:60px;opacity:0;animation:fadeUp .5s 1.6s ease forwards}
         .footer-links{display:flex;justify-content:center;gap:24px}
@@ -126,7 +147,7 @@
     </style>
 </head>
 <body>
-    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-5FBJMJQG" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+    <!-- noscript GTM removed: JS required for handshake, noscript would leak install_id -->
 
     <main class="container">
         <!-- Success Ring with Confetti -->
@@ -164,6 +185,7 @@
             </a>
             <br>
             <a href="https://infolily.com" class="secondary">Explore all features &rarr;</a>
+            <div class="status-wrap"><span id="status"></span><div id="note"></div></div>
         </div>
 
         <!-- Footer -->
@@ -176,6 +198,105 @@
         </footer>
     </main>
 
-    <script>document.getElementById('cta').onclick=function(){window.dataLayer&&window.dataLayer.push({event:'cta_click',cta_location:'welcome_page',cta_text:'Open ChatGPT'})}</script>
+    <script>
+    (function(){
+        var API='https://api-cn.infolily.com/api/v1/install_link';
+        // UUID v4 regex for handshake validation
+        var UUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+        function isUUID(s){return s&&UUID_RE.test(s)}
+
+        function genUUID(){
+            if(typeof crypto!=='undefined'&&crypto.randomUUID)return crypto.randomUUID();
+            var d=new Uint8Array(16);
+            crypto.getRandomValues(d);
+            d[6]=(d[6]&0x0f)|0x40;
+            d[8]=(d[8]&0x3f)|0x80;
+            var h='';for(var i=0;i<16;i++)h+=(d[i]<16?'0':'')+d[i].toString(16);
+            return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20);
+        }
+
+        function getCookie(n){
+            var m=document.cookie.match(new RegExp('(^| )'+n+'=([^;]+)'));
+            return m?m[2]:null;
+        }
+
+        function setCookie(n,v){
+            document.cookie=n+'='+v+'; path=/; max-age=31536000; samesite=lax; secure';
+        }
+
+        function setUI(id,txt){var e=document.getElementById(id);if(e)e.textContent=txt}
+
+        function getAid(){
+            var aid=null;
+            try{aid=localStorage.getItem('aid')}catch(e){}
+            if(!isUUID(aid))aid=getCookie('aid');
+            if(!isUUID(aid)){
+                aid=genUUID();
+                try{localStorage.setItem('aid',aid)}catch(e){}
+                setCookie('aid',aid);
+            }
+            return aid;
+        }
+
+        function postLink(data){
+            var json=JSON.stringify(data);
+            return fetch(API,{
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body:json,
+                keepalive:true,
+                mode:'cors',
+                credentials:'omit'
+            }).then(function(r){
+                console.log('[welcome] POST response status', r.status);
+                return r.ok;
+            }).catch(function(err){
+                if(navigator.sendBeacon){
+                    var blob=new Blob([json],{type:'application/json'});
+                    var queued=navigator.sendBeacon(API,blob);
+                    console.log('[welcome] POST sendBeacon queued', queued);
+                    return queued;
+                }
+                console.log('[welcome] POST failed', err);
+                return false;
+            });
+        }
+
+        // CTA click tracking
+        var cta=document.getElementById('cta');
+        if(cta)cta.onclick=function(){window.dataLayer&&window.dataLayer.push({event:'cta_click',cta_location:'welcome_page',cta_text:'Open ChatGPT'})};
+
+        // Install handshake
+        const installId=window.__install_id||new URLSearchParams(location.search).get('install_id');
+        console.log('[welcome] installId detected', installId);
+
+        if(!installId||!isUUID(installId)){return;}
+
+        var aid=getAid();
+        console.log('[welcome] aid detected/created', aid);
+        if(!isUUID(aid)){
+            setUI('status','Setup incomplete');
+            setUI('note','Please try again later');
+            return;
+        }
+
+        setUI('status','Linking...');
+
+        console.log('[welcome] POST attempt', API, {install_id:installId, aid:aid});
+        postLink({install_id:installId,aid:aid})
+            .then(function(ok){
+                if(ok){
+                    setUI('status','Linking started - your extension will confirm.');
+                    setUI('note','');
+                }else{
+                    setUI('status','We\'ll retry later');
+                }
+            })
+            .catch(function(){
+                setUI('status','We\'ll retry later');
+            });
+    })();
+    </script>
 </body>
 </html>
