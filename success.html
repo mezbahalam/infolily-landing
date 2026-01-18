@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Success</title>
+    <!-- Google Tag Manager -->
+    <script>(function (w, d, s, l, i) {
+            w[l] = w[l] || []; w[l].push({
+                'gtm.start':
+                    new Date().getTime(), event: 'gtm.js'
+            }); var f = d.getElementsByTagName(s)[0],
+                j = d.createElement(s), dl = l != 'dataLayer' ? '&l=' + l : ''; j.async = true; j.src =
+                    'https://www.googletagmanager.com/gtm.js?id=' + i + dl; f.parentNode.insertBefore(j, f);
+        })(window, document, 'script', 'dataLayer', 'GTM-5FBJMJQG');</script>
+    <!-- End Google Tag Manager -->
+</head>
+
+<body>
+    <!-- Google Tag Manager (noscript) -->
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-5FBJMJQG" height="0" width="0"
+            style="display:none;visibility:hidden"></iframe></noscript>
+    <!-- End Google Tag Manager (noscript) -->
+
+    <script>
+        (function () {
+            // Get params from URL
+            const params = new URLSearchParams(window.location.search);
+            const eventName = params.get('event');
+            const userId = params.get('user_id');
+
+            // Purchase params
+            const transactionId = params.get('transaction_id');
+            const value = params.get('value');
+            const currency = params.get('currency');
+            const itemName = params.get('item_name');
+
+            if (eventName) {
+                // SECURITY CHECK
+                const secret = params.get('s');
+                if (secret !== 'inf_sec_882') {
+                    console.warn('Invalid secret');
+                    window.close();
+                    return;
+                }
+
+                // Prepare separate event object for GA4 purchase to ensure valid schema
+                if (eventName === 'purchase') {
+                    // Push purchase event
+                    const purchaseData = {
+                        event: 'purchase',
+                        ecommerce: {
+                            transaction_id: transactionId,
+                            value: parseFloat(value),
+                            currency: currency,
+                            items: [
+                                {
+                                    item_name: itemName,
+                                    item_category: 'subscription',
+                                    price: parseFloat(value),
+                                    quantity: 1
+                                }
+                            ]
+                        }
+                    };
+                    window.dataLayer = window.dataLayer || [];
+                    window.dataLayer.push(purchaseData);
+                    console.log('Purchase pushed:', purchaseData);
+
+                } else {
+                    // Standard event (sign_up)
+                    const eventData = {
+                        event: eventName,
+                        timestamp: new Date().toISOString(),
+                        source: 'extension_bridge'
+                    };
+                    if (userId) {
+                        eventData.user_id = userId;
+                    }
+                    window.dataLayer = window.dataLayer || [];
+                    window.dataLayer.push(eventData);
+                    console.log('Event pushed:', eventData);
+                }
+
+                // Close window after a short delay to ensure GTM fires
+                setTimeout(() => {
+                    // Try to close the tab
+                    window.close();
+
+                    // Fallback UI
+                    document.body.innerHTML = '<div style="font-family:sans-serif;text-align:center;padding:50px;">Success! You can close this tab/window.</div>';
+                }, 2000);
+            } else {
+                window.close();
+            }
+        })();
+    </script>
+</body>
+
+</html>
