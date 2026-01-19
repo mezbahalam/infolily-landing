@@ -28,6 +28,8 @@
             const params = new URLSearchParams(window.location.search);
             const eventName = params.get('event');
             const userId = params.get('user_id');
+            const extensionId = params.get('extension_id'); // Passed from Rails
+            const sessionId = params.get('session_id') || params.get('transaction_id'); // Handle both naming conventions
 
             // Purchase params
             const transactionId = params.get('transaction_id');
@@ -35,6 +37,34 @@
             const currency = params.get('currency');
             const itemName = params.get('item_name');
 
+            // MODE 1: NOTIFY EXTENSION (Beacon)
+            // If we have an extension_id and session_id, we just paid via Stripe redirect
+            if (extensionId && sessionId) {
+                document.getElementById('status-message').textContent = 'Connecting to extension...';
+
+                if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+                    chrome.runtime.sendMessage(extensionId, {
+                        type: 'payment-success',
+                        sessionId: sessionId
+                    }, (response) => {
+                        // We don't strictly need to close this, as the Extension might open a NEW tab for GTM
+                        // But let's show success
+                        if (chrome.runtime.lastError) {
+                            console.warn('Extension not reachable immediately.');
+                            document.getElementById('status-message').textContent = 'Payment received! Return to the extension.';
+                        } else {
+                            document.getElementById('status-message').textContent = 'Success! syncing with extension...';
+                            // Optional: Close after delay if we want this tab to vanish
+                            setTimeout(() => window.close(), 3000);
+                        }
+                    });
+                } else {
+                    document.getElementById('status-message').textContent = 'Payment successful. Please return to the extension.';
+                }
+                // Mode 1 Complete. Continue to GTM.
+            }
+
+            // MODE 2: GTM TRACKING
             if (eventName) {
                 // SECURITY CHECK
                 const secret = params.get('s');
@@ -63,38 +93,46 @@
                             ]
                         }
                     };
-                    window.dataLayer = window.dataLayer || [];
-                    window.dataLayer.push(purchaseData);
-                    console.log('Purchase pushed:', purchaseData);
+                };
+                window.dataLayer = window.dataLayer || [];
+                window.dataLayer.push(purchaseData);
+                // console.log('Purchase pushed'); (Keep logs minimal)
 
-                } else {
-                    // Standard event (sign_up)
-                    const eventData = {
-                        event: eventName,
-                        timestamp: new Date().toISOString(),
-                        source: 'extension_bridge'
-                    };
-                    if (userId) {
-                        eventData.user_id = userId;
-                    }
-                    window.dataLayer = window.dataLayer || [];
-                    window.dataLayer.push(eventData);
-                    console.log('Event pushed:', eventData);
-                }
-
-                // Close window after a short delay to ensure GTM fires
-                setTimeout(() => {
-                    // Try to close the tab
-                    window.close();
-
-                    // Fallback UI
-                    document.body.innerHTML = '<div style="font-family:sans-serif;text-align:center;padding:50px;">Success! You can close this tab/window.</div>';
-                }, 2000);
             } else {
-                window.close();
+                // Standard event (sign_up)
+                const eventData = {
+                    event: eventName,
+                    timestamp: new Date().toISOString(),
+                    source: 'extension_bridge'
+                };
+                if (userId) {
+                    eventData.user_id = userId;
+                }
+                window.dataLayer = window.dataLayer || [];
+                window.dataLayer.push(eventData);
             }
-        })();
+
+            // Close window after a short delay to ensure GTM fires
+            setTimeout(() => {
+                // Try to close the tab
+                window.close();
+
+                // Fallback UI
+                document.body.innerHTML = '<div style="font-family:sans-serif;text-align:center;padding:50px;">Success! You can close this tab/window.</div>';
+            }, 2000);
+        } else {
+            // No event, no extension msg -> Just close or show error
+            document.body.innerHTML = '<div style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; text-align: center; padding: 50px; color: #333;"><h1>Invalid Request</h1><p>Missing parameters.</p></div>';
+        }
+        }) ();
     </script>
+    <!-- Fallback/Status UI -->
+    <div
+        style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; text-align: center; padding: 50px; color: #333;">
+        <h1 style="margin-bottom: 20px;">Payment Successful</h1>
+        <p id="status-message" style="color: #666; font-size: 16px;">Syncing with extension...</p>
+        <div style="margin-top: 30px; font-size: 12px; color: #999;">Do not close this window until finished.</div>
+    </div>
 </body>
 
 </html>
