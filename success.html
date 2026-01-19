@@ -93,38 +93,37 @@
                             ]
                         }
                     };
-                };
-                window.dataLayer = window.dataLayer || [];
-                window.dataLayer.push(purchaseData);
-                // console.log('Purchase pushed'); (Keep logs minimal)
+                    window.dataLayer = window.dataLayer || [];
+                    window.dataLayer.push(purchaseData);
+                    // console.log('Purchase pushed'); (Keep logs minimal)
 
-            } else {
-                // Standard event (sign_up)
-                const eventData = {
-                    event: eventName,
-                    timestamp: new Date().toISOString(),
-                    source: 'extension_bridge'
-                };
-                if (userId) {
-                    eventData.user_id = userId;
+                } else {
+                    // Standard event (sign_up)
+                    const eventData = {
+                        event: eventName,
+                        timestamp: new Date().toISOString(),
+                        source: 'extension_bridge'
+                    };
+                    if (userId) {
+                        eventData.user_id = userId;
+                    }
+                    window.dataLayer = window.dataLayer || [];
+                    window.dataLayer.push(eventData);
                 }
-                window.dataLayer = window.dataLayer || [];
-                window.dataLayer.push(eventData);
+
+                // Close window after a short delay to ensure GTM fires
+                setTimeout(() => {
+                    // Try to close the tab
+                    window.close();
+
+                    // Fallback UI
+                    document.body.innerHTML = '<div style="font-family:sans-serif;text-align:center;padding:50px;">Success! You can close this tab/window.</div>';
+                }, 2000);
+            } else {
+                // No event, no extension msg -> Just close or show error
+                document.body.innerHTML = '<div style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; text-align: center; padding: 50px; color: #333;"><h1>Invalid Request</h1><p>Missing parameters.</p></div>';
             }
-
-            // Close window after a short delay to ensure GTM fires
-            setTimeout(() => {
-                // Try to close the tab
-                window.close();
-
-                // Fallback UI
-                document.body.innerHTML = '<div style="font-family:sans-serif;text-align:center;padding:50px;">Success! You can close this tab/window.</div>';
-            }, 2000);
-        } else {
-            // No event, no extension msg -> Just close or show error
-            document.body.innerHTML = '<div style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; text-align: center; padding: 50px; color: #333;"><h1>Invalid Request</h1><p>Missing parameters.</p></div>';
-        }
-        }) ();
+        })();
     </script>
     <!-- Fallback/Status UI -->
     <div
