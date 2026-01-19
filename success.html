@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Success</title>
-    <!-- Version: 1.0.1 (Syntax Fixed) -->
+    <!-- Version: 1.0.2 (Script at Bottom) -->
     <!-- Google Tag Manager -->
     <script>(function (w, d, s, l, i) {
             w[l] = w[l] || []; w[l].push({
@@ -23,109 +23,6 @@
             style="display:none;visibility:hidden"></iframe></noscript>
     <!-- End Google Tag Manager (noscript) -->
 
-    <script>
-        (function () {
-            // Get params from URL
-            const params = new URLSearchParams(window.location.search);
-            const eventName = params.get('event');
-            const userId = params.get('user_id');
-            const extensionId = params.get('extension_id'); // Passed from Rails
-            const sessionId = params.get('session_id') || params.get('transaction_id'); // Handle both naming conventions
-
-            // Purchase params
-            const transactionId = params.get('transaction_id');
-            const value = params.get('value');
-            const currency = params.get('currency');
-            const itemName = params.get('item_name');
-
-            // MODE 1: NOTIFY EXTENSION (Beacon)
-            // If we have an extension_id and session_id, we just paid via Stripe redirect
-            if (extensionId && sessionId) {
-                document.getElementById('status-message').textContent = 'Connecting to extension...';
-
-                if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
-                    chrome.runtime.sendMessage(extensionId, {
-                        type: 'payment-success',
-                        sessionId: sessionId
-                    }, (response) => {
-                        // We don't strictly need to close this, as the Extension might open a NEW tab for GTM
-                        // But let's show success
-                        if (chrome.runtime.lastError) {
-                            console.warn('Extension not reachable immediately.');
-                            document.getElementById('status-message').textContent = 'Payment received! Return to the extension.';
-                        } else {
-                            document.getElementById('status-message').textContent = 'Success! syncing with extension...';
-                            // Optional: Close after delay if we want this tab to vanish
-                            setTimeout(() => window.close(), 3000);
-                        }
-                    });
-                } else {
-                    document.getElementById('status-message').textContent = 'Payment successful. Please return to the extension.';
-                }
-                // Mode 1 Complete. Continue to GTM.
-            }
-
-            // MODE 2: GTM TRACKING
-            if (eventName) {
-                // SECURITY CHECK
-                const secret = params.get('s');
-                if (secret !== 'inf_sec_882') {
-                    console.warn('Invalid secret');
-                    window.close();
-                    return;
-                }
-
-                // Prepare separate event object for GA4 purchase to ensure valid schema
-                if (eventName === 'purchase') {
-                    // Push purchase event
-                    const purchaseData = {
-                        event: 'purchase',
-                        ecommerce: {
-                            transaction_id: transactionId,
-                            value: parseFloat(value),
-                            currency: currency,
-                            items: [
-                                {
-                                    item_name: itemName,
-                                    item_category: 'subscription',
-                                    price: parseFloat(value),
-                                    quantity: 1
-                                }
-                            ]
-                        }
-                    };
-                    window.dataLayer = window.dataLayer || [];
-                    window.dataLayer.push(purchaseData);
-                    // console.log('Purchase pushed'); (Keep logs minimal)
-
-                } else {
-                    // Standard event (sign_up)
-                    const eventData = {
-                        event: eventName,
-                        timestamp: new Date().toISOString(),
-                        source: 'extension_bridge'
-                    };
-                    if (userId) {
-                        eventData.user_id = userId;
-                    }
-                    window.dataLayer = window.dataLayer || [];
-                    window.dataLayer.push(eventData);
-                }
-
-                // Close window after a short delay to ensure GTM fires
-                setTimeout(() => {
-                    // Try to close the tab
-                    window.close();
-
-                    // Fallback UI
-                    document.body.innerHTML = '<div style="font-family:sans-serif;text-align:center;padding:50px;">Success! You can close this tab/window.</div>';
-                }, 2000);
-            } else {
-                // No event, no extension msg -> Just close or show error
-                document.body.innerHTML = '<div style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; text-align: center; padding: 50px; color: #333;"><h1>Invalid Request</h1><p>Missing parameters.</p></div>';
-            }
-        })();
-    </script>
     <!-- Fallback/Status UI -->
     <div
         style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; text-align: center; padding: 50px; color: #333;">
@@ -133,6 +30,125 @@
         <p id="status-message" style="color: #666; font-size: 16px;">Syncing with extension...</p>
         <div style="margin-top: 30px; font-size: 12px; color: #999;">Do not close this window until finished.</div>
     </div>
+
+    <!-- Script moved to bottom to ensure DOM is ready and prevent race conditions -->
+    <script>
+        (function () {
+            try {
+                // Get params from URL
+                const params = new URLSearchParams(window.location.search);
+                const eventName = params.get('event');
+                const userId = params.get('user_id');
+                const extensionId = params.get('extension_id');
+                const sessionId = params.get('session_id') || params.get('transaction_id');
+
+                // Purchase params
+                const transactionId = params.get('transaction_id');
+                const value = params.get('value');
+                const currency = params.get('currency');
+                const itemName = params.get('item_name');
+
+                // Helper to update UI safely
+                function updateStatus(msg, color) {
+                    const el = document.getElementById('status-message');
+                    if (el) {
+                        el.textContent = msg;
+                        if (color) el.style.color = color;
+                    }
+                }
+
+                // MODE 1: NOTIFY EXTENSION (Beacon)
+                // If we have an extension_id and session_id, we just paid via Stripe redirect
+                if (extensionId && sessionId) {
+                    updateStatus('Connecting to extension...');
+
+                    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+                        chrome.runtime.sendMessage(extensionId, {
+                            type: 'payment-success',
+                            sessionId: sessionId
+                        }, (response) => {
+                            if (chrome.runtime.lastError) {
+                                console.warn('Extension not reachable immediately.');
+                                // Don't show error to user, just proceed, extension usually listens anyway or polls.
+                            } else {
+                                // Extension ACK received
+                            }
+                        });
+                    }
+                }
+
+                // MODE 2: GTM TRACKING
+                if (eventName) {
+                    // SECURITY CHECK
+                    const secret = params.get('s');
+                    if (secret !== 'inf_sec_882') {
+                        console.warn('Invalid secret');
+                        document.body.innerHTML = '<h1>Error: Invalid Request</h1><p>Security check failed.</p>';
+                        return;
+                    }
+
+                    window.dataLayer = window.dataLayer || [];
+
+                    if (eventName === 'purchase') {
+                        // Push purchase event
+                        const purchaseData = {
+                            event: 'purchase',
+                            ecommerce: {
+                                transaction_id: transactionId,
+                                value: parseFloat(value),
+                                currency: currency,
+                                items: [{
+                                    item_name: itemName,
+                                    item_category: 'subscription',
+                                    price: parseFloat(value),
+                                    quantity: 1
+                                }]
+                            }
+                        };
+                        window.dataLayer.push(purchaseData);
+                    } else {
+                        // Standard event (sign_up)
+                        const eventData = {
+                            event: eventName,
+                            timestamp: new Date().toISOString(),
+                            source: 'extension_bridge'
+                        };
+                        if (userId) eventData.user_id = userId;
+                        window.dataLayer.push(eventData);
+                    }
+
+                    // Success UI & Close Logic
+                    setTimeout(() => {
+                        // Try to close (will likely fail on redirected tabs)
+                        window.close();
+
+                        // Update UI to show final success state
+                        updateStatus('Done! You can close this window now.', 'green');
+
+                        // Fallback: Add a close button if window.close() blocked
+                        const btn = document.createElement('button');
+                        btn.textContent = 'Close Window';
+                        btn.onclick = () => window.close();
+                        btn.style.marginTop = '20px';
+                        btn.style.padding = '10px 20px';
+                        document.body.lastElementChild.appendChild(btn);
+                    }, 2000);
+
+                } else {
+                    // Invalid Request (No event)
+                    // If no event, we might just be showing a generic success page? 
+                    // But usually we expect params.
+                    if (!extensionId) {
+                        document.body.innerHTML = '<div style="font-family: sans-serif; text-align: center; padding: 50px; color: #333;"><h1>Invalid Request</h1><p>Missing parameters.</p></div>';
+                    }
+                }
+
+            } catch (e) {
+                console.error('Bridge Error:', e);
+                document.body.innerHTML = '<h1 style="color:red">Script Error</h1><p>' + e.message + '</p>';
+            }
+        })();
+    </script>
 </body>
 
 </html>
